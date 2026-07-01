@@ -4,3 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+storage = { path = "../drivers/storage" }
+usb = { path = "../drivers/usb" }
+network = { path = "../drivers/network" }
+gpu = { path = "../drivers/gpu" }
+hal = { version = "0.1.0", path = "../hal" }
+x86_64 = "0.15.4"
+bootloader_api = "0.11.15"

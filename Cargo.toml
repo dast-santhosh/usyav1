@@ -4,10 +4,14 @@ members = [
     "boot",
     "kernel",
     "hal",
-    "drivers",
+    "drivers/storage",
+    "drivers/usb",
+    "drivers/network",
+    "drivers/gpu",
     "posix",
-    "security"
-]
+    "security",
+    "xtask"
+, "drivers/input"]
 
 [profile.dev]
 panic = "abort"

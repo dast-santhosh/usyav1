@@ -1,14 +1,12 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+#![no_std]
+#![feature(abi_x86_interrupt)]
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod gdt;
+pub mod interrupts;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+pub fn init() {
+    gdt::init();
+    interrupts::init();
+    unsafe { interrupts::PICS.lock().initialize() };
+    x86_64::instructions::interrupts::enable();
 }

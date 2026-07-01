@@ -34,7 +34,7 @@ impl<'a> DrawTarget for Display<'a> {
         for Pixel(Point { x, y }, color) in pixels.into_iter() {
             if x >= 0 && y >= 0 && (x as usize) < width && (y as usize) < height {
                 let pixel_offset = ((y as usize) * stride + (x as usize)) * bytes_per_pixel;
-                if pixel_offset + 2 < buffer.len() {
+                if pixel_offset + bytes_per_pixel <= buffer.len() {
                     match info.pixel_format {
                         bootloader_api::info::PixelFormat::Rgb => {
                             buffer[pixel_offset] = color.r();
@@ -51,6 +51,10 @@ impl<'a> DrawTarget for Display<'a> {
                             buffer[pixel_offset] = gray;
                         },
                         _ => {}
+                    }
+                    // If it's a 32-bit format (4 bytes per pixel), set the 4th byte to 255 (opaque alpha)
+                    if bytes_per_pixel == 4 {
+                        buffer[pixel_offset + 3] = 255;
                     }
                 }
             }
@@ -73,19 +77,36 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         // Clear the screen to pure white
         let _ = display.clear(Rgb888::WHITE);
 
+        // Initialize HAL (GDT, IDT, PIC)
+        hal::init();
+
+        // Initialize Memory Subsystem (Paging, PMM)
+        let phys_mem_offset = x86_64::VirtAddr::new(boot_info.physical_memory_offset.into_option().unwrap());
+        let mut mapper = unsafe { kernel::memory::init(phys_mem_offset) };
+        let mut frame_allocator = unsafe { kernel::memory::BootInfoFrameAllocator::init(&boot_info.memory_regions) };
+
+        // Clear the screen to pure white
+        let _ = display.clear(Rgb888::WHITE);
+
         // Parse and embed the BMP logo
         let bmp_data = include_bytes!("assets/logo.bmp");
-        if let Ok(bmp) = Bmp::<Rgb888>::from_slice(bmp_data) {
-            let display_size = display.size();
-            let bmp_size = bmp.bounding_box().size;
-            
-            // Calculate mathematical center
-            let center_x = (display_size.width.saturating_sub(bmp_size.width)) / 2;
-            let center_y = (display_size.height.saturating_sub(bmp_size.height)) / 2;
-            
-            // Draw the image
-            let _ = Image::new(&bmp, Point::new(center_x as i32, center_y as i32))
-                .draw(&mut display);
+        match Bmp::<Rgb888>::from_slice(bmp_data) {
+            Ok(bmp) => {
+                let display_size = display.size();
+                let bmp_size = bmp.bounding_box().size;
+                
+                // Calculate mathematical center
+                let center_x = (display_size.width.saturating_sub(bmp_size.width)) / 2;
+                let center_y = (display_size.height.saturating_sub(bmp_size.height)) / 2;
+                
+                // Draw the image
+                let _ = Image::new(&bmp, Point::new(center_x as i32, center_y as i32))
+                    .draw(&mut display);
+            }
+            Err(_) => {
+                // VISUAL DEBUGGING: If the BMP fails to parse, paint the screen RED
+                let _ = display.clear(Rgb888::RED);
+            }
         }
     }
 
@@ -98,6 +119,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
+    // Ideally we would draw the panic string to the framebuffer here.
+    // For now, we will just issue a software breakpoint.
+    x86_64::instructions::interrupts::int3();
     loop {
         #[cfg(target_arch = "x86_64")]
         unsafe { core::arch::asm!("hlt") };
