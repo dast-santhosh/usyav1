@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "boot",
+    "kernel",
+    "hal",
+    "drivers",
+    "posix",
+    "security"
+]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
