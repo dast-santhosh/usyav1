@@ -14,6 +14,13 @@ pub trait StorageDriver {
     fn capacity_blocks(&self) -> u64;
 }
 
+pub enum NvmeError {
+    NoControllerFound,
+    InvalidBar0,
+    UnsupportedCommandSet,
+    Timeout,
+}
+
 /// A structure representing an NVMe Controller mapped in memory
 pub struct NvmeController {
     _bus: u8,
@@ -26,10 +33,11 @@ pub struct NvmeController {
 
 impl NvmeController {
     /// Initialize the NVMe Controller by scanning the PCI bus.
-    pub fn init() -> Result<Self, &'static str> {
+    pub fn init_controller() -> Result<Self, NvmeError> {
         // Scan PCI bus for a device with Class 0x01 (Mass Storage), 
         // Subclass 0x08 (Non-Volatile Memory), ProgIF 0x02 (NVM Express)
-        for bus in 0..=255 {
+        // Optimize for QEMU: Only scan Bus 0 to avoid massive I/O port emulation lag
+        for bus in 0..=0 {
             for device in 0..32 {
                 for function in 0..8 {
                     let vendor_id = Self::pci_read_u16(bus, device, function, 0x00);
@@ -66,13 +74,13 @@ impl NvmeController {
             }
         }
         
-        Err("No NVMe controller found on PCI bus")
+        Err(NvmeError::NoControllerFound)
     }
 
     /// Internal method to configure the NVMe controller registers
-    fn configure_controller(&mut self) -> Result<(), &'static str> {
+    fn configure_controller(&mut self) -> Result<(), NvmeError> {
         if self.bar0 == 0 {
-            return Err("Invalid NVMe BAR0 memory-mapped address");
+            return Err(NvmeError::InvalidBar0);
         }
 
         unsafe {
@@ -82,7 +90,7 @@ impl NvmeController {
             
             // Check if the controller supports the NVM command set (CAP.CSS bit 37)
             if (cap_high & (1 << 5)) == 0 {
-                return Err("NVMe controller does not support NVM command set");
+                return Err(NvmeError::UnsupportedCommandSet);
             }
 
             // Disable the controller before configuring (Clear CC.EN, bit 0)
@@ -111,11 +119,11 @@ impl NvmeController {
             write_volatile((self.bar0 + 0x14) as *mut u32, cc);
 
             // Wait for CSTS.RDY to become 1, indicating readiness
-            let mut timeout = 0xfffff;
+            let mut timeout = 5_000_000;
             while (read_volatile((self.bar0 + 0x1C) as *const u32) & 1) == 0 {
                 timeout -= 1;
                 if timeout == 0 {
-                    return Err("NVMe controller initialization timeout while waiting for CSTS.RDY");
+                    return Err(NvmeError::Timeout);
                 }
                 core::hint::spin_loop();
             }
@@ -191,5 +199,19 @@ impl StorageDriver for NvmeController {
         // Normally retrieved dynamically via Identify Namespace command.
         // Assuming a generic 1GB drive for now (512 byte blocks).
         2 * 1024 * 1024
+    }
+}
+
+impl drivers::Driver for NvmeController {
+    fn init(&mut self) -> Result<(), &'static str> {
+        self.configure_controller().map_err(|_| "Failed to configure NVMe Controller")
+    }
+
+    fn name(&self) -> &'static str {
+        "NVMe Storage Driver"
+    }
+
+    fn handle_interrupt(&mut self) {
+        // Acknowledge NVMe interrupt here
     }
 }

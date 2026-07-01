@@ -10,8 +10,10 @@ members = [
     "drivers/gpu",
     "posix",
     "security",
-    "xtask"
-, "drivers/input"]
+    "xtask",
+    "drivers/input",
+    "drivers"
+, "app"]
 
 [profile.dev]
 panic = "abort"

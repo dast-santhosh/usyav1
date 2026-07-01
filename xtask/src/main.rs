@@ -12,7 +12,7 @@ fn main() {
             "build",
             "--package", "boot",
             "--target", "x86_64-unknown-none",
-            "-Z", "build-std=core,compiler_builtins",
+            "-Z", "build-std=core,compiler_builtins,alloc",
             "-Z", "build-std-features=compiler-builtins-mem",
         ])
         .status()
@@ -41,9 +41,15 @@ fn main() {
         .create_disk_image(&uefi_path)
         .expect("Failed to create UEFI boot image");
 
+    let iso_path = out_dir.join("usya.iso");
+    if let Err(e) = std::fs::copy(&bios_path, &iso_path) {
+        println!("Warning: Failed to copy bin to ISO: {}", e);
+    }
+
     println!("Success! Boot images created at:");
     println!("  BIOS: {}", bios_path.display());
     println!("  UEFI: {}", uefi_path.display());
+    println!("  ISO:  {}", iso_path.display());
 }
 
 fn workspace_root() -> PathBuf {

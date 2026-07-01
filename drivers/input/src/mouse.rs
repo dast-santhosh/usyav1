@@ -54,17 +54,19 @@ impl Mouse {
     }
 
     unsafe fn write_mouse(&mut self, data: u8) {
-        self.wait_write();
-        self.command_port.write(0xD4);
-        self.wait_write();
-        self.data_port.write(data);
-        self.wait_read();
-        let _ack = self.data_port.read(); // Read ACK
+        unsafe {
+            self.wait_write();
+            self.command_port.write(0xD4);
+            self.wait_write();
+            self.data_port.write(data);
+            self.wait_read();
+            let _ack = self.data_port.read(); // Read ACK
+        }
     }
 
     unsafe fn wait_write(&mut self) {
         for _ in 0..10000 {
-            if (self.command_port.read() & 2) == 0 {
+            if unsafe { self.command_port.read() } & 2 == 0 {
                 return;
             }
         }
@@ -72,7 +74,7 @@ impl Mouse {
 
     unsafe fn wait_read(&mut self) {
         for _ in 0..10000 {
-            if (self.command_port.read() & 1) == 1 {
+            if unsafe { self.command_port.read() } & 1 == 1 {
                 return;
             }
         }

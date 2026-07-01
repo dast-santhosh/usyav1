@@ -4,3 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+xmas-elf = "0.9"
+x86_64 = "0.15.4"
+hal = { path = "../hal" }
+kernel = { path = "../kernel" }
+log = "0.4"

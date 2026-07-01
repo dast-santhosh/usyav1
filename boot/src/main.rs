@@ -8,6 +8,7 @@ use x86_64::instructions::interrupts;
 use input::keyboard::KEYBOARD_QUEUE;
 use input::mouse::MOUSE;
 use core::fmt::Write;
+use hal::{serial_print, serial_println};
 
 entry_point!(kernel_main);
 
@@ -15,88 +16,56 @@ entry_point!(kernel_main);
 static mut BACK_BUFFER: [u8; 1920 * 1080 * 4] = [0; 1920 * 1080 * 4];
 
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
+    serial_println!("[USYA NANO-CORE] Kernel successfully booted. Ring 0 active.");
+
+    /*
+    // COMMENTED OUT TO ISOLATE KERNEL PANIC
+    */
     // Initialize HAL (GDT, IDT, PIC)
     hal::init();
     input::init();
 
-    // Enable interrupts now that IDT and PIC are set up
-    interrupts::enable();
+    /*
 
-    // Initialize Memory Subsystem (Paging, PMM)
+    // Initialize Memory Subsystem (PMM, Paging, Heap)
     let phys_mem_offset = x86_64::VirtAddr::new(boot_info.physical_memory_offset.into_option().unwrap());
-    let _mapper = unsafe { kernel::memory::init(phys_mem_offset) };
-    let _frame_allocator = unsafe { kernel::memory::BootInfoFrameAllocator::init(&boot_info.memory_regions) };
+    
+    let mut mapper = unsafe { kernel::memory::paging::init(phys_mem_offset) };
+    let mut frame_allocator = kernel::memory::pmm::BitmapFrameAllocator::new();
+    frame_allocator.init(&boot_info.memory_regions);
+    kernel::memory::paging::identity_map_2gb(&mut mapper, &mut frame_allocator);
+    kernel::memory::heap::init_heap(&mut mapper, &mut frame_allocator).expect("Heap init failed");
+    kernel::memory::init_global_memory(mapper, frame_allocator);
+
+    interrupts::enable();
+    posix::init();
+
+    let elf_data = include_bytes!("../../c_template/driver.elf");
+    posix::process::start_process(elf_data, boot_info.physical_memory_offset.into_option().unwrap());
+    */
 
     if let Some(framebuffer) = boot_info.framebuffer.as_mut() {
-        let mut compositor = Compositor::new(framebuffer, unsafe { &mut BACK_BUFFER });
+        let mut compositor = Compositor::new(framebuffer, unsafe { &mut *(&raw mut BACK_BUFFER) });
 
-        let mut terminal_buffer: [char; 2048] = ['\0'; 2048];
-        let mut terminal_len = 0;
+        // 1. Clear background to pure white
+        compositor.clear(255, 255, 255);
+        
+        // 2. Draw a simple red square to prove visuals work
+        compositor.draw_rect(100, 100, 50, 50, 255, 0, 0);
 
-        loop {
-            // Check for new keyboard input
-            while let Some(c) = KEYBOARD_QUEUE.lock().pop() {
-                if c == '\x08' {
-                    if terminal_len > 0 {
-                        terminal_len -= 1;
-                        terminal_buffer[terminal_len] = '\0';
-                    }
-                } else if terminal_len < 2048 {
-                    terminal_buffer[terminal_len] = c;
-                    terminal_len += 1;
-                }
-            }
-
-            // Get mouse position
-            let (mx, my) = {
-                let mouse = MOUSE.lock();
-                (mouse.x as usize, mouse.y as usize)
-            };
-
-            // 1. Clear background
-            compositor.clear(40, 44, 52); // Dark grey background
-
-            // 2. Draw terminal text
-            let mut text_x = 10;
-            let mut text_y = 10;
-            for i in 0..terminal_len {
-                let c = terminal_buffer[i];
-                if c == '\n' {
-                    text_y += 16;
-                    text_x = 10;
-                } else {
-                    compositor.draw_char(text_x, text_y, c, 220, 220, 220); // Light text
-                    text_x += 8;
-                    if text_x + 8 > compositor.width() {
-                        text_x = 10;
-                        text_y += 16;
-                    }
-                }
-            }
-
-            // Draw cursor block
-            compositor.draw_rect(text_x, text_y, 8, 8, 255, 255, 255);
-
-            // 3. Draw mouse pointer (simple red square for now)
-            compositor.draw_rect(mx, my, 4, 4, 255, 0, 0);
-
-            // 4. Flip buffers to screen
-            compositor.swap_buffers();
-
-            // Halt until next interrupt to save CPU cycles
-            x86_64::instructions::hlt();
-        }
+        // 3. Flip buffers to screen
+        compositor.swap_buffers();
+        
+        serial_println!("[USYA NANO-CORE] Framebuffer compositor initialized. Safe Halting.");
     }
 
-    loop {
-        x86_64::instructions::hlt();
-    }
+    // Explicit infinite loop so the CPU halts safely without rebooting
+    loop {}
 }
 
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    x86_64::instructions::interrupts::int3();
-    loop {
-        x86_64::instructions::hlt();
-    }
+fn panic(info: &PanicInfo) -> ! {
+    serial_println!("[KERNEL PANIC] {}", info);
+    // Explicit infinite loop. No int3 or hlt since IDT might be uninitialized.
+    loop {}
 }
