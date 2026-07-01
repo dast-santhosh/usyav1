@@ -65,7 +65,9 @@ version = "0.1.0"
 dependencies = [
  "bootloader_api",
  "embedded-graphics",
+ "gpu",
  "hal",
+ "input",
  "kernel",
  "tinybmp",
  "x86_64",
@@ -265,6 +267,7 @@ dependencies = [
 name = "hal"
 version = "0.1.0"
 dependencies = [
+ "input",
  "lazy_static",
  "pic8259",
  "spin 0.12.1",

@@ -10,3 +10,5 @@ embedded-graphics = "0.8.1"
 kernel = { version = "0.1.0", path = "../kernel" }
 hal = { version = "0.1.0", path = "../hal" }
 x86_64 = "0.15.4"
+input = { version = "0.1.0", path = "../drivers/input" }
+gpu = { version = "0.1.0", path = "../drivers/gpu" }
